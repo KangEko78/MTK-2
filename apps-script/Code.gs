@@ -190,6 +190,7 @@ function login_(request) {
 
 function saveAnswer_(request) {
   const session = verifySession_(request.token);
+  if (tabExitCount_(session.sid) >= 2) throw new Error('Sesi dihentikan setelah dua kali keluar dari tab. Nilai simulasi ditetapkan 0.');
   const questionNo = Number(request.questionNo);
   if (!Number.isInteger(questionNo) || questionNo < 1 || questionNo > 30) throw new Error('Nomor soal tidak valid.');
   if (!Array.isArray(request.answer) && request.answer !== null) throw new Error('Format jawaban tidak valid.');
@@ -209,7 +210,8 @@ function resume_(request) {
   const answers = rows.slice(1).filter(row => row[0] === session.sid).map(row => ({
     questionNo: Number(row[4]), answer: JSON.parse(String(row[5] || 'null')), flagged: row[6] === true
   }));
-  return { user: { fullName: session.fullName, studentClass: session.studentClass, role: session.role }, answers, violationCount: violationCount_(session.sid) };
+  const tabExitCount = tabExitCount_(session.sid);
+  return { user: { fullName: session.fullName, studentClass: session.studentClass, role: session.role }, answers, violationCount: violationCount_(session.sid), tabExitCount, attemptTerminated: tabExitCount >= 2 };
 }
 
 function recordViolation_(request) {
@@ -220,7 +222,10 @@ function recordViolation_(request) {
   getSheet_('violations').appendRow([
     session.sid, session.username, session.fullName, session.studentClass, eventType, new Date()
   ]);
-  return { recorded: true, violationCount: violationCount_(session.sid) };
+  const tabExitCount = tabExitCount_(session.sid);
+  const attemptTerminated = tabExitCount >= 2;
+  if (attemptTerminated) writeZeroResult_(session);
+  return { recorded: true, violationCount: violationCount_(session.sid), tabExitCount, attemptTerminated, scorePercent: attemptTerminated ? 0 : null };
 }
 
 function violationCount_(sessionId) {
@@ -228,8 +233,31 @@ function violationCount_(sessionId) {
   return rows.slice(1).filter(row => row[0] === sessionId).length;
 }
 
+function tabExitCount_(sessionId) {
+  const rows = getSheet_('violations').getDataRange().getValues();
+  return rows.slice(1).filter(row => row[0] === sessionId && String(row[4]) === 'tab_hidden').length;
+}
+
+function writeZeroResult_(session) {
+  const answerRows = getSheet_('answers').getDataRange().getValues();
+  const answers = answerRows.slice(1).filter(row => row[0] === session.sid).map(row => ({
+    questionNo: Number(row[4]), answer: JSON.parse(String(row[5] || 'null')), flagged: row[6] === true
+  }));
+  const sheet = getSheet_('results');
+  const rows = sheet.getDataRange().getValues();
+  const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === session.sid);
+  const tabExits = tabExitCount_(session.sid);
+  const values = [session.sid, session.username, session.fullName, session.studentClass,
+    new Date(session.startedAt), new Date(), 0, 30, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, JSON.stringify(answers), violationCount_(session.sid),
+    `Nilai 0 — ${tabExits} kali keluar tab`];
+  if (rowIndex < 0) sheet.appendRow(values);
+  else sheet.getRange(rowIndex + 1, 1, 1, values.length).setValues([values]);
+}
+
 function finish_(request) {
   const session = verifySession_(request.token);
+  const terminated = tabExitCount_(session.sid) >= 2;
   const answers = Array.isArray(request.answers) ? request.answers.slice(0, 30) : [];
   const summary = request.summary && typeof request.summary === 'object' ? request.summary : {};
   const domains = Array.isArray(summary.domains) ? summary.domains : [];
@@ -243,13 +271,13 @@ function finish_(request) {
   const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === session.sid);
   const violations = violationCount_(session.sid);
   const values = [session.sid, session.username, session.fullName, session.studentClass,
-    new Date(session.startedAt), new Date(), Number(summary.correct || 0), Number(summary.total || 30), Number(summary.percent || 0),
-    Number(bilangan.correct || 0), Number(bilangan.total || 0), Number(aljabar.correct || 0), Number(aljabar.total || 0),
-    Number(geometri.correct || 0), Number(geometri.total || 0), Number(dataPeluang.correct || 0), Number(dataPeluang.total || 0),
-    JSON.stringify(answers), violations, violations ? 'Perlu ditinjau' : 'Tidak ada pelanggaran tercatat'];
+    new Date(session.startedAt), new Date(), terminated ? 0 : Number(summary.correct || 0), Number(summary.total || 30), terminated ? 0 : Number(summary.percent || 0),
+    terminated ? 0 : Number(bilangan.correct || 0), Number(bilangan.total || 0), terminated ? 0 : Number(aljabar.correct || 0), Number(aljabar.total || 0),
+    terminated ? 0 : Number(geometri.correct || 0), Number(geometri.total || 0), terminated ? 0 : Number(dataPeluang.correct || 0), Number(dataPeluang.total || 0),
+    JSON.stringify(answers), violations, terminated ? `Nilai 0 — ${tabExitCount_(session.sid)} kali keluar tab` : violations ? 'Perlu ditinjau' : 'Tidak ada pelanggaran tercatat'];
   if (rowIndex < 0) sheet.appendRow(values);
   else sheet.getRange(rowIndex + 1, 1, 1, values.length).setValues([values]);
-  return { saved: true, sessionId: session.sid, violationCount: violations, integrityStatus: violations ? 'Perlu ditinjau' : 'Tidak ada pelanggaran tercatat' };
+  return { saved: true, sessionId: session.sid, violationCount: violations, attemptTerminated: terminated, scorePercent: terminated ? 0 : Number(summary.percent || 0), integrityStatus: terminated ? `Nilai 0 — ${tabExitCount_(session.sid)} kali keluar tab` : violations ? 'Perlu ditinjau' : 'Tidak ada pelanggaran tercatat' };
 }
 
 function hashPersonalPin_(pin) {

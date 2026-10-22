@@ -32,7 +32,7 @@ Alur siswa: guru mendaftarkan nama siswa, membuat PIN unik melalui menu **Buat P
 
 ## Catatan penggunaan
 
-Ini adalah simulasi latihan. Saat login, aplikasi meminta layar penuh dan akses kamera. Kamera menampilkan video live lokal pada perangkat siswa saja, tanpa audio, perekaman, penyimpanan, atau pengiriman ke backend. Jika tab ditinggalkan, layar penuh dihentikan, atau halaman ditutup, sesi dijeda; peristiwa dikirim ke tab `Violations`, dan jumlahnya dicantumkan di `Results`. Nilai tidak otomatis menjadi nol; guru meninjau pelanggaran. Setelah siswa kembali, layar penuh dan kamera harus aktif sebelum sesi dilanjutkan.
+Ini adalah simulasi latihan. Saat login, aplikasi meminta layar penuh dan akses kamera. Kamera menampilkan video live lokal pada perangkat siswa saja, tanpa audio, perekaman, penyimpanan, atau pengiriman ke backend. Keluar tab dijeda dan dicatat; pada deteksi keluar tab kedua, server menghentikan sesi dan menetapkan nilai 0, halaman otomatis menampilkan hasil 0 dan membunyikan sirine singkat saat terlihat kembali. Keluar layar penuh atau mematikan kamera tetap menjeda sesi dan dicatat, tetapi tidak menambah hitungan keluar tab. Setelah pelanggaran pertama, siswa dapat melanjutkan; perpindahan tab berikutnya tetap dihitung walau dialog jeda masih terbuka.
 
 Browser biasa tidak dapat mencegah siswa membuka perangkat lain atau menjamin halaman selalu fullscreen. Pengamanan ini mendeteksi perpindahan tab dan keluarnya fullscreen, lalu menjeda serta mencatatnya. Untuk ujian berisiko tinggi, gunakan perangkat terkelola/kiosk atau aplikasi secure-exam browser. Kamera di implementasi ini tidak terlihat oleh guru karena stream tidak dikirim ke server. Akses kamera memerlukan HTTPS atau localhost dan izin kamera dari browser.
 
